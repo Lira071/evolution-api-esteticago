@@ -1,0 +1,107 @@
+# Blueprint do Render para a Evolution API v2 (WhatsApp gateway do EsteticaGo).
+#
+# Como usar:
+#   1. Suba esta pasta para um repo no GitHub (ex.: evolution-api-esteticago).
+#   2. No Render: New > Blueprint > conecte o repo > Apply.
+#   3. No 1º deploy o Render cria o banco + o web service e gera a API key.
+#   4. Copie a URL pública do serviço (https://evolution-api-esteticago.onrender.com)
+#      e cole em SERVER_URL (aba Environment do serviço) > Manual Deploy.
+#   5. Pegue o valor gerado de AUTHENTICATION_API_KEY (aba Environment).
+#
+# Depois, no serviço principal do EsteticaGo (outro serviço no Render), defina:
+#   EVOLUTION_API_URL      = https://evolution-api-esteticago.onrender.com
+#   EVOLUTION_API_KEY      = <AUTHENTICATION_API_KEY gerada aqui>
+#   EVOLUTION_API_INSTANCE = <nome da instância que você criar, ex.: esteticago>
+
+databases:
+  - name: evolution-db
+    databaseName: evolution
+    user: evolution
+    plan: free            # ATENÇÃO: o Postgres free do Render expira em 90 dias.
+                          # Para produção de verdade, troque para "basic-256mb".
+
+services:
+  - type: web
+    name: evolution-api-esteticago
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter          # NÃO use "free": ele hiberna após 15 min ocioso e a
+                          # sessão do WhatsApp cai (precisa reparear via QR toda vez).
+    region: oregon         # troque se preferir outra região
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      # ── Obrigatórios ────────────────────────────────────────────────
+      - key: SERVER_URL
+        sync: false        # preencha com a URL pública após o 1º deploy
+      - key: SERVER_PORT
+        value: "8080"
+      - key: AUTHENTICATION_API_KEY
+        generateValue: true   # o Render gera uma chave forte automaticamente
+
+      # ── Banco (Prisma / PostgreSQL) ────────────────────────────────
+      - key: DATABASE_ENABLED
+        value: "true"
+      - key: DATABASE_PROVIDER
+        value: postgresql
+      - key: DATABASE_CONNECTION_URI
+        fromDatabase:
+          name: evolution-db
+          property: connectionString
+      - key: DATABASE_CONNECTION_CLIENT_NAME
+        value: evolution_esteticago
+      # Guarda só o essencial da instância/sessão; não persiste histórico de
+      # mensagens/contatos (mantém o banco pequeno).
+      - key: DATABASE_SAVE_DATA_INSTANCE
+        value: "true"
+      - key: DATABASE_SAVE_DATA_NEW_MESSAGE
+        value: "false"
+      - key: DATABASE_SAVE_MESSAGE_UPDATE
+        value: "false"
+      - key: DATABASE_SAVE_DATA_CONTACTS
+        value: "false"
+      - key: DATABASE_SAVE_DATA_CHATS
+        value: "false"
+      - key: DATABASE_SAVE_DATA_LABELS
+        value: "false"
+      - key: DATABASE_SAVE_DATA_HISTORIC
+        value: "false"
+
+      # ── Cache (sem Redis; cache local em memória) ──────────────────
+      - key: CACHE_REDIS_ENABLED
+        value: "false"
+      - key: CACHE_LOCAL_ENABLED
+        value: "true"
+
+      # ── Instância / QR ────────────────────────────────────────────
+      - key: DEL_INSTANCE
+        value: "false"
+      - key: QRCODE_LIMIT
+        value: "30"
+      - key: QRCODE_COLOR
+        value: "#175EA0"
+      - key: CONFIG_SESSION_PHONE_CLIENT
+        value: EsteticaGo
+      - key: CONFIG_SESSION_PHONE_NAME
+        value: Chrome
+      # Se o WhatsApp recusar a conexão com "versão desatualizada", defina aqui a
+      # versão web atual do Baileys (ex.: 2.3000.1015901307). sync:false = opcional.
+      - key: CONFIG_SESSION_PHONE_VERSION
+        sync: false
+
+      # ── Webhook global desligado (cada instância configura o seu) ──
+      - key: WEBHOOK_GLOBAL_ENABLED
+        value: "false"
+
+      # ── Log enxuto + sem telemetria ──────────────────────────────
+      - key: LOG_LEVEL
+        value: ERROR
+      - key: LOG_COLOR
+        value: "false"
+      - key: LOG_BAILEYS
+        value: error
+      - key: TELEMETRY
+        value: "false"
+      - key: TELEMETRY_ENABLED
+        value: "false"
